@@ -40,7 +40,7 @@ SELECT * FROM users WHERE create_time >= '${startDate=2024-01-01}' AND status = 
 
 ## 数据库连接配置
 
-### 字段顺序
+### 数据库连接配置
 1. 连接名称
 2. 数据库类型
 3. 服务器
