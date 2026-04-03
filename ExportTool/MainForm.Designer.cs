@@ -1,4 +1,4 @@
-﻿namespace ExportTool
+namespace ExportTool
 {
     partial class MainForm
     {
@@ -449,7 +449,6 @@
             this.progressBar.Size = new System.Drawing.Size(400, 12);
             this.progressBar.TabIndex = 7;
             this.progressBar.Visible = false;
-            // 设置进度条颜色
             this.progressBar.ForeColor = System.Drawing.Color.Blue;
             this.progressBar.BackColor = System.Drawing.Color.LightGray;
             // 

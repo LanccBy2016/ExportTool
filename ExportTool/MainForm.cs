@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.Data.SqlClient;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -9,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using MySqlConnector;
 
 namespace ExportTool
 {
@@ -64,7 +66,6 @@ namespace ExportTool
             if (maskPanel != null)
             {
                 maskPanel.Visible = show;
-                // 确保蒙板在所有控件的前面，除了等待指示器
                 if (show)
                 {
                     maskPanel.BringToFront();
@@ -77,14 +78,32 @@ namespace ExportTool
                 progressBar.Style = ProgressBarStyle.Marquee;
                 progressBar.MarqueeAnimationSpeed = 30;
                 progressBar.Visible = show;
-                // 确保控件在最前面
                 if (show)
                 {
-                    // 调整progressBar的位置到页面正中间
                     progressBar.Left = (this.ClientSize.Width - progressBar.Width) / 2;
                     progressBar.Top = (this.ClientSize.Height - progressBar.Height) / 2;
                     progressBar.BringToFront();
                 }
+            }
+            
+
+        }
+
+        private void UpdateProgress(int progress)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action<int>(UpdateProgress), progress);
+                return;
+            }
+            
+            if (progressBar != null)
+            {
+                if (progressBar.Style != ProgressBarStyle.Continuous)
+                {
+                    progressBar.Style = ProgressBarStyle.Continuous;
+                }
+                progressBar.Value = Math.Min(progress, 100);
             }
         }
 
@@ -309,7 +328,10 @@ namespace ExportTool
             try
             {
                 UpdateStatus("正在执行查询...");
+                
+                // 显示蒙板和加载动画
                 ShowWaitIndicator(true);
+                
                 queryButton.Enabled = false;
                 exportButton.Enabled = false;
                 firstPageButton.Enabled = false;
@@ -326,21 +348,37 @@ namespace ExportTool
                         using (var cmd = conn.CreateCommand())
                         {
                             cmd.CommandText = sql;
+                            
                             var table = new DataTable();
-                            if (connection.Type == DatabaseConnection.DatabaseType.SqlServer)
+                            table.Locale = System.Globalization.CultureInfo.InvariantCulture;
+                            table.MinimumCapacity = 1000;
+                            
+                            using (var reader = cmd.ExecuteReader())
                             {
-                                using (var adapter = new System.Data.SqlClient.SqlDataAdapter((System.Data.SqlClient.SqlCommand)cmd))
+                                // 添加列
+                                for (int i = 0; i < reader.FieldCount; i++)
                                 {
-                                    adapter.Fill(table);
+                                    table.Columns.Add(reader.GetName(i), reader.GetFieldType(i));
                                 }
-                            }
-                            else
-                            {
-                                using (var adapter = new MySqlConnector.MySqlDataAdapter((MySqlConnector.MySqlCommand)cmd))
+                                
+                                // 开始批量加载
+                                table.BeginLoadData();
+                                
+                                // 逐行读取
+                                while (reader.Read())
                                 {
-                                    adapter.Fill(table);
+                                    var row = table.NewRow();
+                                    for (int i = 0; i < reader.FieldCount; i++)
+                                    {
+                                        row[i] = reader[i];
+                                    }
+                                    table.Rows.Add(row);
                                 }
+                                
+                                // 结束批量加载
+                                table.EndLoadData();
                             }
+                            
                             return table;
                         }
                     }
@@ -372,7 +410,9 @@ namespace ExportTool
             }
             finally
             {
+                // 隐藏蒙板和加载动画
                 ShowWaitIndicator(false);
+                
                 queryButton.Enabled = true;
                 exportButton.Enabled = true;
                 if (fullDataTable != null && fullDataTable.Rows.Count > 0)
@@ -505,7 +545,6 @@ namespace ExportTool
                     try
                     {
                         UpdateStatus("正在导出Excel文件...");
-                        ShowWaitIndicator(true);
                         string filePath = saveFileDialog.FileName;
                         
                         queryButton.Enabled = false;
@@ -514,6 +553,9 @@ namespace ExportTool
                         prevPageButton.Enabled = false;
                         nextPageButton.Enabled = false;
                         lastPageButton.Enabled = false;
+                        
+                        // 显示蒙板和加载动画
+                        ShowWaitIndicator(true);
                         
                         // 异步导出
                         await Task.Run(() =>
@@ -539,7 +581,9 @@ namespace ExportTool
                     }
                     finally
                     {
+                        // 隐藏蒙板和加载动画
                         ShowWaitIndicator(false);
+                        
                         queryButton.Enabled = true;
                         exportButton.Enabled = true;
                         if (fullDataTable != null && fullDataTable.Rows.Count > 0)

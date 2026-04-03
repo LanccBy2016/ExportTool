@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Data;
 using System.Data.SqlClient;
 using System.IO;
@@ -82,6 +82,18 @@ namespace ExportTool
                     connectionString += $"Port={port};";
                 }
                 return new MySqlConnection(connectionString);
+            }
+        }
+
+        public object CreateDataAdapter(IDbCommand cmd)
+        {
+            if (Type == DatabaseType.SqlServer)
+            {
+                return new SqlDataAdapter((SqlCommand)cmd);
+            }
+            else
+            {
+                return new MySqlDataAdapter((MySqlCommand)cmd);
             }
         }
 

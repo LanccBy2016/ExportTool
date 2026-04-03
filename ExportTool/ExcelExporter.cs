@@ -1,6 +1,8 @@
-using System;
+﻿using System;
 using System.Data;
 using System.IO;
+using System.Xml;
+using System.Collections.Generic;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -16,142 +18,182 @@ namespace ExportTool
                 throw new ArgumentException("没有数据可以导出");
             }
 
-            using (SpreadsheetDocument spreadsheetDocument = SpreadsheetDocument.Create(filePath, SpreadsheetDocumentType.Workbook))
+            try
             {
-                WorkbookPart workbookPart = spreadsheetDocument.AddWorkbookPart();
-                workbookPart.Workbook = new Workbook();
-
-                WorksheetPart worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
-                worksheetPart.Worksheet = new Worksheet(new SheetData());
-
-                Sheets sheets = spreadsheetDocument.WorkbookPart.Workbook.AppendChild(new Sheets());
-
-                Sheet sheet = new Sheet()
+                using (SpreadsheetDocument spreadsheetDocument = SpreadsheetDocument.Create(filePath, SpreadsheetDocumentType.Workbook))
                 {
-                    Id = spreadsheetDocument.WorkbookPart.GetIdOfPart(worksheetPart),
-                    SheetId = 1,
-                    Name = "Sheet1"
-                };
-                sheets.Append(sheet);
+                    WorkbookPart workbookPart = spreadsheetDocument.AddWorkbookPart();
+                    workbookPart.Workbook = new Workbook();
 
-                SheetData sheetData = worksheetPart.Worksheet.GetFirstChild<SheetData>();
+                    WorksheetPart worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
 
-                Stylesheet stylesheet = CreateStylesheet();
-                WorkbookStylesPart stylesPart = workbookPart.AddNewPart<WorkbookStylesPart>();
-                stylesPart.Stylesheet = stylesheet;
-                stylesPart.Stylesheet.Save();
-
-                Row headerRow = new Row();
-                for (int i = 0; i < dataTable.Columns.Count; i++)
-                {
-                    Cell cell = new Cell();
-                    cell.DataType = CellValues.String;
-                    cell.CellValue = new CellValue(dataTable.Columns[i].ColumnName);
-                    cell.StyleIndex = 1;
-                    headerRow.AppendChild(cell);
-                }
-                sheetData.AppendChild(headerRow);
-
-                for (int rowIndex = 0; rowIndex < dataTable.Rows.Count; rowIndex++)
-                {
-                    Row row = new Row();
-                    DataRow dataRow = dataTable.Rows[rowIndex];
-
-                    for (int colIndex = 0; colIndex < dataTable.Columns.Count; colIndex++)
+                    Sheets sheets = workbookPart.Workbook.AppendChild(new Sheets());
+                    Sheet sheet = new Sheet()
                     {
-                        Cell cell = new Cell();
-                        object value = dataRow[colIndex];
+                        Id = workbookPart.GetIdOfPart(worksheetPart),
+                        SheetId = 1,
+                        Name = "Sheet1"
+                    };
+                    sheets.Append(sheet);
 
-                        if (value == null || value == DBNull.Value)
+                    SharedStringTablePart sstPart = workbookPart.AddNewPart<SharedStringTablePart>();
+                    sstPart.SharedStringTable = new SharedStringTable();
+                    Dictionary<string, int> sharedStringMap = new Dictionary<string, int>();
+                    int sharedStringCount = 0;
+
+                    using (Stream stream = worksheetPart.GetStream(FileMode.Create, FileAccess.Write))
+                    using (XmlWriter writer = XmlWriter.Create(stream))
+                    {
+                        writer.WriteStartDocument();
+                        writer.WriteStartElement("worksheet", "http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+                        writer.WriteStartElement("sheetData");
+
+                        writer.WriteStartElement("row");
+                        for (int colIndex = 0; colIndex < dataTable.Columns.Count; colIndex++)
                         {
-                            cell.DataType = CellValues.String;
-                            cell.CellValue = new CellValue(string.Empty);
+                            string columnName = dataTable.Columns[colIndex].ColumnName;
+                            int sstIndex = GetSharedStringIndex(sharedStringMap, sstPart.SharedStringTable, columnName, ref sharedStringCount);
+                            writer.WriteStartElement("c");
+                            writer.WriteAttributeString("t", "s");
+                            writer.WriteStartElement("v");
+                            writer.WriteString(sstIndex.ToString());
+                            writer.WriteEndElement();
+                            writer.WriteEndElement();
                         }
-                        else if (value is DateTime)
+                        writer.WriteEndElement();
+
+                        int totalRows = dataTable.Rows.Count;
+
+                        for (int rowIndex = 0; rowIndex < totalRows; rowIndex++)
                         {
-                            DateTime dateTime = (DateTime)value;
-                            cell.DataType = CellValues.String;
-                            cell.CellValue = new CellValue(dateTime.ToString("yyyy-MM-dd HH:mm:ss"));
-                        }
-                        else if (value is bool)
-                        {
-                            cell.DataType = CellValues.Boolean;
-                            cell.CellValue = new CellValue((bool)value);
-                        }
-                        else
-                        {
-                            cell.DataType = CellValues.String;
-                            cell.CellValue = new CellValue(value.ToString());
+                            DataRow dataRow = dataTable.Rows[rowIndex];
+
+                            writer.WriteStartElement("row");
+
+                            for (int colIndex = 0; colIndex < dataTable.Columns.Count; colIndex++)
+                            {
+                                object value = dataRow[colIndex];
+
+                                if (value == null || value == DBNull.Value)
+                                {
+                                    writer.WriteStartElement("c");
+                                    writer.WriteEndElement();
+                                }
+                                else if (value is DateTime)
+                                {
+                                    string dateStr = ((DateTime)value).ToString("yyyy-MM-dd HH:mm:ss");
+                                    if (dateStr.Length <= 50)
+                                    {
+                                        int sstIndex = GetSharedStringIndex(sharedStringMap, sstPart.SharedStringTable, dateStr, ref sharedStringCount);
+                                        writer.WriteStartElement("c");
+                                        writer.WriteAttributeString("t", "s");
+                                        writer.WriteStartElement("v");
+                                        writer.WriteString(sstIndex.ToString());
+                                        writer.WriteEndElement();
+                                        writer.WriteEndElement();
+                                    }
+                                    else
+                                    {
+                                        writer.WriteStartElement("c");
+                                        writer.WriteAttributeString("t", "inlineStr");
+                                        writer.WriteStartElement("is");
+                                        writer.WriteStartElement("t");
+                                        writer.WriteString(dateStr);
+                                        writer.WriteEndElement();
+                                        writer.WriteEndElement();
+                                        writer.WriteEndElement();
+                                    }
+                                }
+                                else if (value is bool)
+                                {
+                                    writer.WriteStartElement("c");
+                                    writer.WriteAttributeString("t", "b");
+                                    writer.WriteStartElement("v");
+                                    writer.WriteString(((bool)value) ? "1" : "0");
+                                    writer.WriteEndElement();
+                                    writer.WriteEndElement();
+                                }
+                                else if (value is int || value is long || value is short || value is byte)
+                                {
+                                    writer.WriteStartElement("c");
+                                    writer.WriteAttributeString("t", "n");
+                                    writer.WriteStartElement("v");
+                                    writer.WriteString(value.ToString());
+                                    writer.WriteEndElement();
+                                    writer.WriteEndElement();
+                                }
+                                else if (value is decimal || value is double || value is float)
+                                {
+                                    writer.WriteStartElement("c");
+                                    writer.WriteAttributeString("t", "n");
+                                    writer.WriteStartElement("v");
+                                    writer.WriteString(Convert.ToDouble(value).ToString());
+                                    writer.WriteEndElement();
+                                    writer.WriteEndElement();
+                                }
+                                else
+                                {
+                                    string strValue = value.ToString();
+                                    if (strValue.Length <= 50)
+                                    {
+                                        int sstIndex = GetSharedStringIndex(sharedStringMap, sstPart.SharedStringTable, strValue, ref sharedStringCount);
+                                        writer.WriteStartElement("c");
+                                        writer.WriteAttributeString("t", "s");
+                                        writer.WriteStartElement("v");
+                                        writer.WriteString(sstIndex.ToString());
+                                        writer.WriteEndElement();
+                                        writer.WriteEndElement();
+                                    }
+                                    else
+                                    {
+                                        writer.WriteStartElement("c");
+                                        writer.WriteAttributeString("t", "inlineStr");
+                                        writer.WriteStartElement("is");
+                                        writer.WriteStartElement("t");
+                                        writer.WriteString(strValue);
+                                        writer.WriteEndElement();
+                                        writer.WriteEndElement();
+                                        writer.WriteEndElement();
+                                    }
+                                }
+                            }
+
+                            writer.WriteEndElement();
                         }
 
-                        row.AppendChild(cell);
+                        writer.WriteEndElement();
+                        writer.WriteEndElement();
+                        writer.WriteEndDocument();
                     }
 
-                    sheetData.AppendChild(row);
+                    sstPart.SharedStringTable.Save();
+                    workbookPart.Workbook.Save();
                 }
-
-                worksheetPart.Worksheet.Save();
-                workbookPart.Workbook.Save();
+            }
+            catch
+            {
+                if (File.Exists(filePath))
+                {
+                    try
+                    {
+                        File.Delete(filePath);
+                    }
+                    catch { }
+                }
+                throw;
             }
         }
 
-        private Stylesheet CreateStylesheet()
+        private int GetSharedStringIndex(Dictionary<string, int> map, SharedStringTable sst, string text, ref int count)
         {
-            Stylesheet stylesheet = new Stylesheet();
-
-            Fonts fonts = new Fonts();
-            fonts.Count = 2;
-
-            Font defaultFont = new Font(
-                new FontSize() { Val = 11 },
-                new FontName() { Val = "Calibri" }
-            );
-            fonts.AppendChild(defaultFont);
-
-            Font boldFont = new Font(
-                new Bold(),
-                new FontSize() { Val = 11 },
-                new FontName() { Val = "Calibri" }
-            );
-            fonts.AppendChild(boldFont);
-
-            Fills fills = new Fills();
-            fills.Count = 2;
-
-            Fill defaultFill = new Fill(new PatternFill() { PatternType = PatternValues.None });
-            fills.AppendChild(defaultFill);
-
-            Fill grayFill = new Fill(new PatternFill() { PatternType = PatternValues.Gray125 });
-            fills.AppendChild(grayFill);
-
-            Borders borders = new Borders();
-            borders.Count = 1;
-
-            Border defaultBorder = new Border();
-            borders.AppendChild(defaultBorder);
-
-            CellStyleFormats cellStyleFormats = new CellStyleFormats();
-            cellStyleFormats.Count = 1;
-
-            CellFormat defaultCellFormat = new CellFormat() { FontId = 0, FillId = 0, BorderId = 0 };
-            cellStyleFormats.AppendChild(defaultCellFormat);
-
-            CellFormats cellFormats = new CellFormats();
-            cellFormats.Count = 2;
-
-            CellFormat normalFormat = new CellFormat() { FontId = 0, FillId = 0, BorderId = 0, FormatId = 0 };
-            cellFormats.AppendChild(normalFormat);
-
-            CellFormat headerFormat = new CellFormat() { FontId = 1, FillId = 0, BorderId = 0, FormatId = 0 };
-            cellFormats.AppendChild(headerFormat);
-
-            stylesheet.AppendChild(fonts);
-            stylesheet.AppendChild(fills);
-            stylesheet.AppendChild(borders);
-            stylesheet.AppendChild(cellStyleFormats);
-            stylesheet.AppendChild(cellFormats);
-
-            return stylesheet;
+            if (map.TryGetValue(text, out int index))
+            {
+                return index;
+            }
+            SharedStringItem newItem = new SharedStringItem(new Text(text));
+            sst.AppendChild(newItem);
+            map[text] = count;
+            return count++;
         }
     }
 }
