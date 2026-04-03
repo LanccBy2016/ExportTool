@@ -8,6 +8,7 @@ namespace ExportTool
     public partial class ScriptForm : Form
     {
         public SqlScript Script { get; set; }
+        private bool _isUpdatingVariables = false;
 
         public ScriptForm()
         {
@@ -26,9 +27,24 @@ namespace ExportTool
 
         private void UpdateVariables()
         {
+            // 设置标志防止自动触发的选中事件导致光标定位
+            _isUpdatingVariables = true;
+            
+            // 保存当前光标位置和选中状态
+            int selectionStart = contentTextBox.SelectionStart;
+            int selectionLength = contentTextBox.SelectionLength;
+            
             var variables = ExtractVariables(contentTextBox.Text);
             variablesListBox.DataSource = null;
             variablesListBox.DataSource = variables;
+            
+            // 恢复光标位置和选中状态
+            contentTextBox.SelectionStart = selectionStart;
+            contentTextBox.SelectionLength = selectionLength;
+            contentTextBox.Focus();
+            
+            // 清除标志
+            _isUpdatingVariables = false;
         }
 
         private List<string> ExtractVariables(string content)
@@ -53,7 +69,8 @@ namespace ExportTool
 
         private void variablesListBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (variablesListBox.SelectedItem == null)
+            // 如果是自动更新变量列表时触发的选中事件，不执行光标定位
+            if (_isUpdatingVariables || variablesListBox.SelectedItem == null)
                 return;
 
             string selectedVariable = variablesListBox.SelectedItem.ToString();
