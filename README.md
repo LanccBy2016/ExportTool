@@ -11,10 +11,9 @@
 - 🚀 **极致轻量** - 单文件发布，体积小巧
 
 ## 快速开始
-<img width="1222" height="640" alt="image" src="https://github.com/user-attachments/assets/d50aacc5-0c87-49b9-a1c8-cdf2a40f5626" />
-
 <img width="1212" height="634" alt="image" src="https://github.com/user-attachments/assets/56ce602c-70f1-4ee6-8385-e2844540a2b1" />
 
+<img width="1222" height="640" alt="image" src="https://github.com/user-attachments/assets/d50aacc5-0c87-49b9-a1c8-cdf2a40f5626" />
 
 ### 下载
 
