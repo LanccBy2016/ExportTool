@@ -54,6 +54,7 @@ namespace ExportTool
                             string columnName = dataTable.Columns[colIndex].ColumnName;
                             int sstIndex = GetSharedStringIndex(sharedStringMap, sstPart.SharedStringTable, columnName, ref sharedStringCount);
                             writer.WriteStartElement("c");
+                            writer.WriteAttributeString("r", GetColumnName(colIndex) + "1");
                             writer.WriteAttributeString("t", "s");
                             writer.WriteStartElement("v");
                             writer.WriteString(sstIndex.ToString());
@@ -67,16 +68,19 @@ namespace ExportTool
                         for (int rowIndex = 0; rowIndex < totalRows; rowIndex++)
                         {
                             DataRow dataRow = dataTable.Rows[rowIndex];
+                            int excelRow = rowIndex + 2;
 
                             writer.WriteStartElement("row");
 
                             for (int colIndex = 0; colIndex < dataTable.Columns.Count; colIndex++)
                             {
                                 object value = dataRow[colIndex];
+                                string cellRef = GetColumnName(colIndex) + excelRow.ToString();
 
                                 if (value == null || value == DBNull.Value)
                                 {
                                     writer.WriteStartElement("c");
+                                    writer.WriteAttributeString("r", cellRef);
                                     writer.WriteEndElement();
                                 }
                                 else if (value is DateTime)
@@ -86,6 +90,7 @@ namespace ExportTool
                                     {
                                         int sstIndex = GetSharedStringIndex(sharedStringMap, sstPart.SharedStringTable, dateStr, ref sharedStringCount);
                                         writer.WriteStartElement("c");
+                                        writer.WriteAttributeString("r", cellRef);
                                         writer.WriteAttributeString("t", "s");
                                         writer.WriteStartElement("v");
                                         writer.WriteString(sstIndex.ToString());
@@ -95,6 +100,7 @@ namespace ExportTool
                                     else
                                     {
                                         writer.WriteStartElement("c");
+                                        writer.WriteAttributeString("r", cellRef);
                                         writer.WriteAttributeString("t", "inlineStr");
                                         writer.WriteStartElement("is");
                                         writer.WriteStartElement("t");
@@ -107,6 +113,7 @@ namespace ExportTool
                                 else if (value is bool)
                                 {
                                     writer.WriteStartElement("c");
+                                    writer.WriteAttributeString("r", cellRef);
                                     writer.WriteAttributeString("t", "b");
                                     writer.WriteStartElement("v");
                                     writer.WriteString(((bool)value) ? "1" : "0");
@@ -116,6 +123,7 @@ namespace ExportTool
                                 else if (value is int || value is long || value is short || value is byte)
                                 {
                                     writer.WriteStartElement("c");
+                                    writer.WriteAttributeString("r", cellRef);
                                     writer.WriteAttributeString("t", "n");
                                     writer.WriteStartElement("v");
                                     writer.WriteString(value.ToString());
@@ -125,6 +133,7 @@ namespace ExportTool
                                 else if (value is decimal || value is double || value is float)
                                 {
                                     writer.WriteStartElement("c");
+                                    writer.WriteAttributeString("r", cellRef);
                                     writer.WriteAttributeString("t", "n");
                                     writer.WriteStartElement("v");
                                     writer.WriteString(Convert.ToDouble(value).ToString());
@@ -138,6 +147,7 @@ namespace ExportTool
                                     {
                                         int sstIndex = GetSharedStringIndex(sharedStringMap, sstPart.SharedStringTable, strValue, ref sharedStringCount);
                                         writer.WriteStartElement("c");
+                                        writer.WriteAttributeString("r", cellRef);
                                         writer.WriteAttributeString("t", "s");
                                         writer.WriteStartElement("v");
                                         writer.WriteString(sstIndex.ToString());
@@ -147,6 +157,7 @@ namespace ExportTool
                                     else
                                     {
                                         writer.WriteStartElement("c");
+                                        writer.WriteAttributeString("r", cellRef);
                                         writer.WriteAttributeString("t", "inlineStr");
                                         writer.WriteStartElement("is");
                                         writer.WriteStartElement("t");
@@ -194,6 +205,22 @@ namespace ExportTool
             sst.AppendChild(newItem);
             map[text] = count;
             return count++;
+        }
+
+        /// <summary>
+        /// 将 0 基列索引转换为 Excel 列字母（A, B, ..., Z, AA, AB, ...）
+        /// </summary>
+        private string GetColumnName(int columnIndex)
+        {
+            string columnName = string.Empty;
+            int index = columnIndex + 1;
+            while (index > 0)
+            {
+                int remainder = (index - 1) % 26;
+                columnName = (char)('A' + remainder) + columnName;
+                index = (index - 1) / 26;
+            }
+            return columnName;
         }
     }
 }
